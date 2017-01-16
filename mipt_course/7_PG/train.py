@@ -1,5 +1,6 @@
 import tensorflow as tf
 import numpy as np
+import itertools
 import os
 
 import actor_critic as ac
@@ -16,6 +17,7 @@ flags.DEFINE_bool('refresh_stats', False, 'Deletes old events from logdir if Tru
 flags.DEFINE_float('gamma', 1., 'Discount rate')
 flags.DEFINE_integer('n_warming', 0, 'Number of warming runs to train the value function prediciton')
 flags.DEFINE_integer('n_render', 0, 'Number of episodes to render after training is finished')
+flags.DEFINE_float('lambda_', 0., 'TD(lambda_) approximation is used')
 
 if FLAGS.refresh_stats:
     print('Deleting old stats')
@@ -24,8 +26,11 @@ if FLAGS.refresh_stats:
 env = gym.make('CartPole-v0')
 n_actions = env.action_space.n
 n_features = env.observation_space.shape[0]
-np.random.seed(417)
+lambda_ = FLAGS.lambda_
+gamma = FLAGS.gamma
 
+np.random.seed(417)
+tf.set_random_seed(417)
 with tf.Graph().as_default():
      
     pl_probabilities, pl_train, pl_states, pl_advantages, pl_actions = ac.policy(n_actions, n_features, FLAGS.alpha)
@@ -45,6 +50,7 @@ with tf.Graph().as_default():
             actions = []
             states = []
             transitions = []
+            rewards = []
             total_reward = 0
             observation = env.reset()
             print('Episode', i, ': playing')
@@ -58,6 +64,7 @@ with tf.Graph().as_default():
                 actions.append(action_blank)
                 old_observation = observation
                 observation, reward, done, info = env.step(action)
+                rewards.append(reward)
                 transitions.append((old_observation, action, reward))
                 total_reward += reward
                 if done: break
@@ -65,20 +72,17 @@ with tf.Graph().as_default():
             summary = sess.run(merged, feed_dict={n_timesteps_ph: t}) 
             writer.add_summary(summary, i)
             print('Episode', i, ': training')
-            returns = []
             advantages = []
+            
+            values = sess.run(vf_values, feed_dict={vf_states: states})[:, 0]
+            returns = list(itertools.accumulate(rewards[::-1], lambda x, y: gamma * x + y))[::-1]
             for idx, trans in enumerate(transitions):
                 obs, action, reward = trans
                 future_return = 0
                 future_transitions = len(transitions) - idx
                 decrease = 1.
-                for idx2 in range(future_transitions):
-                    future_return += transitions[idx + idx2][2] * decrease
-                    decrease *= FLAGS.gamma
-                returns.append(future_return)
                 state = np.expand_dims(obs, axis=0)
-                value = sess.run(vf_values, feed_dict={vf_states: state})[0][0]
-                advantages.append(future_return - value)
+                advantages.append(returns[idx] - values[idx])
             returns = np.expand_dims(returns, axis=1)
             advantages = np.expand_dims(advantages, axis=1)
             sess.run(vf_train, feed_dict={vf_states: states, vf_observed_returns: returns})
