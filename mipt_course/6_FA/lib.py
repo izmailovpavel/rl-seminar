@@ -6,7 +6,7 @@ A_CNT = 3
 gamma = 1.0
 
 class Featurizer(object):
-    def __init__(self, env=None, n_samples=[100, 100, 100, 100], gamma=[0.2, 0.1, 0.05, 0.005]):
+    def __init__(self, env=None, n_samples=[400], gamma=[0.007]):
         if env is not None:
             self.samples = np.array([env.observation_space.sample() for x in range(sum(n_samples))])
             self.n_samples = n_samples
@@ -24,7 +24,7 @@ class Featurizer(object):
         f = np.hstack((np.ones((N, 1), dtype=np.float32), s))
         p = 0
         for i in range(len(self.n_samples)):
-            scale = np.array([1.0, 3.0])
+            scale = np.array([1.0, 4.0])
             x = scale[None, :] * s
             y = scale[None, :] * self.samples[p: p + self.n_samples[i]]
             d = np.sum(np.square(x), axis=1)[:, None] - 2.0 * np.dot(x, y.T) + np.sum(np.square(y), axis=1)[None, :]
@@ -49,7 +49,6 @@ class Model(object):
     def __init__(self, env=None):
         if env is not None:
             self.Featurizer = Featurizer(env)
-            s = env.observation_space.sample()
             self.w = np.random.normal(0.0, 0.01, size=(A_CNT, self.Featurizer.fd))
 
     def copy(self):
@@ -76,12 +75,8 @@ class Model(object):
         min_v, max_v = -0.07, 0.07
         x = np.linspace(min_x, max_x, 40)
         v = np.linspace(min_v, max_v, 60)
-        phi = []
-        for vv in v:
-            phi.append([])
-            for xx in x:
-                phi[-1].append(self.getQ((xx, vv)))
-        phi = np.array(phi)
+        phi = np.array([(xx, vv) for vv in v for xx in x]).reshape([-1, 2])
+        phi = self.getQ(phi).reshape([v.size, x.size, A_CNT])
         d = np.argmax(phi, axis=2)
         mx, mv = np.meshgrid(x, v)
         CS = plt.contourf(mx, mv, d, levels=[-1e-4, 1.0 - 1e-4, 2.0 - 1e-4, 3.0])
@@ -116,7 +111,6 @@ def sarsa(env, win, num_episodes=50000, alpha_init=0.001):
     replay_memory = []
     state = env.reset()
     for i in range(replay_init_size):
-        q = model.getQ(state)
         policy = model.getPolicy(state, eps)
         action = np.random.choice(A_CNT, p=policy)
         n_state, reward, done, info = env.step(action)
@@ -133,7 +127,6 @@ def sarsa(env, win, num_episodes=50000, alpha_init=0.001):
     state = env.reset()
 
     while episodes < num_episodes:
-        q = model.getQ(state)
         policy = model.getPolicy(state, eps)
         action = np.random.choice(A_CNT, p=policy)
         n_state, reward, done, info = env.step(action)
@@ -144,15 +137,11 @@ def sarsa(env, win, num_episodes=50000, alpha_init=0.001):
             replay_memory.pop(0)
 
         samples = random.sample(replay_memory, batch_size)
-
-        states_batch, action_batch, n_states_batch, reward_batch, done_batch = map(np.array, zip(*samples))
-
-        n_q = model.getQ(n_states_batch)
-
+        state_batch, action_batch, n_state_batch, reward_batch, done_batch = map(np.array, zip(*samples))
+        n_q = model.getQ(n_state_batch)
         target_batch = reward_batch + np.invert(done_batch).astype(np.float32) * \
                   gamma * np.max(n_q, axis=1)
-
-        model.update(states_batch, action_batch, target_batch, alpha)
+        model.update(state_batch, action_batch, target_batch, alpha)
 
         if episodes % 100 == 99:
             env.render()
@@ -161,12 +150,12 @@ def sarsa(env, win, num_episodes=50000, alpha_init=0.001):
         if step_count % 40000 == 0:
             print('Episodes: %d. Steps: %d. Score: %.2f Alpha: %.5g Eps: %.5g' % (episodes, step_count, np.mean(scores), alpha, eps))
             print('reward = ', sum_reward)
-            print('q = ', q)
+            print('q = ', model.getQ(state))
             print('w norm = ', np.sqrt(np.sum(np.square(model.w[:, 1:]), axis=1)))
             model.plot()
 
-        if step_count % 150000 == 0:
-            eps *= 0.7
+        if step_count % 100000 == 0:
+            eps *= 0.5
             print('Eps reduced to %.4f' % (eps))
             k += 1
             alpha = alpha_init / (k ** 0.6)
@@ -183,10 +172,11 @@ def sarsa(env, win, num_episodes=50000, alpha_init=0.001):
             sum_reward = 0
         else:
             state = n_state
-        if len(res)!=0 and res[-1] >= win:
+        if episodes >= 0 and np.mean(scores) >= win:
+            res.append(np.mean(scores))
             break
     return res, model
 
-def run(env, win, alpha_init=0.00007):
+def run(env, win, alpha_init=0.0002):
     scores, model = sarsa(env, win, alpha_init=alpha_init)
     return scores, model
