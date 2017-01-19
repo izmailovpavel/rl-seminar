@@ -44,4 +44,5 @@ def value_function(n_features, beta=0.1):
     diffs = value - observed_returns_ph
     loss = tf.nn.l2_loss(diffs)
     optimizer = tf.train.AdamOptimizer(beta).minimize(loss)
+
     return value, optimizer, state_ph, observed_returns_ph

@@ -76,6 +76,7 @@ with tf.Graph().as_default():
             
             values = sess.run(vf_values, feed_dict={vf_states: states})[:, 0]
             returns = list(itertools.accumulate(rewards[::-1], lambda x, y: gamma * x + y))[::-1]
+
             for idx, trans in enumerate(transitions):
                 obs, action, reward = trans
                 future_return = 0
