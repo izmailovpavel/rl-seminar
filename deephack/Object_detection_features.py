@@ -1,7 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from skimage.morphology import label
+from skimage.morphology import label, convex_hull_image
 from scipy.ndimage.measurements import center_of_mass
+from scipy.ndimage.morphology import distance_transform_edt
+
 
 
 class ObjectDetectionFeatures:
@@ -50,17 +52,19 @@ class ObjectDetectionFeatures:
         bin_im = bg[im, range(im.shape[0])] < th
         return bin_im.reshape((image.shape[0], image.shape[1]))
 
+    def delete_small_obj(self, li, th=3):
+        for i in np.unique(li):
+            w = li == i
+            if np.sum(w) < 3:
+                li[w] = 0
+        return li
+
     def get_object_labels(self, image):
         bin_im = self.binarization(image)
 
         labeled_im = label(bin_im)
-        for i in np.unique(labeled_im):
-            w = labeled_im == i
-            if np.sum(w) < 3:
-                labeled_im[w] = 0
+        labeled_im = self.delete_small_obj(labeled_im)
 
-        #plt.imshow(labeled_im)
-        #plt.show()
         return labeled_im
 
     def find_all_obj_classes(self, n_starts=10, max_samples_im_count=5000):
@@ -149,5 +153,51 @@ class ObjectDetectionFeatures:
                 new_features.append(x_dif)
                 new_features.append(y_dif)
         return np.array(new_features)
+
+    def find_extr_points(self, bi):
+        x_top = y_right = 0
+        x_low = bi.shape[0]
+        y_left = bi.shape[1]
+
+        for i in range(bi.shape[0]):
+            if np.sum(bi[i, :]):
+                x_low = i
+                break
+
+        for i in range(bi.shape[0] - 1, -1, -1):
+            if np.sum(bi[i, :]):
+                x_top = i
+                break
+
+        for i in range(bi.shape[1]):
+            if np.sum(bi[:, i]):
+                y_left = i
+                break
+
+        for i in range(bi.shape[1] - 1, -1, -1):
+            if np.sum(bi[:, i]):
+                y_right = i
+                break
+
+        return x_low, x_top, y_left, y_right
+
+    def get_simple_image(self, image):
+        im = image.copy()
+        li = self.get_object_labels(im)
+        li = self.delete_small_obj(li)
+        new_image = im
+        new_image[li == 0] = 0
+        for i in np.unique(li):
+            if i == 0:
+                continue
+            w = li == i
+            x_low, x_top, y_left, y_right = self.find_extr_points(w)
+
+            color = image[w][0]
+            new_image[x_low - 1:x_top + 1, y_left - 1:y_right + 1] = color
+
+        return new_image
+
+
 
 
