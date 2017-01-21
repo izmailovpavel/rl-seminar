@@ -182,17 +182,31 @@ class ObjectDetectionFeatures:
         return x_low, x_top, y_left, y_right
 
     def get_simple_image(self, image):
+        
         im = image.copy()
         li = self.get_object_labels(im)
         li = self.delete_small_obj(li)
-        new_image = im
-        new_image[li == 0] = 0
+        new_image = np.zeros((60, 60))
+        x_scale, y_scale = 60 / im.shape[0], 60 / im.shape[1]
+#        new_image[li == 0] = 0
         for i in np.unique(li):
             if i == 0:
                 continue
             w = li == i
             x_low, x_top, y_left, y_right = self.find_extr_points(w)
-
+            x_med = (x_top + x_low) / 2
+            y_med = (y_left + y_right) / 2
+            x_low = x_med + int(1.5 * (x_low - x_med))
+            x_top = x_med + int(1.5 * (x_top - x_med))
+            y_right = y_med + int(1.5 * (y_right - y_med))
+            y_left = y_med + int(1.5 * (y_left - y_med))
+            
+            x_low *= x_scale
+            x_top *= x_scale
+            y_right *= y_scale
+            y_left *= y_scale
+            
+            
             color = image[w][0]
             new_image[x_low - 1:x_top + 1, y_left - 1:y_right + 1] = color
 
