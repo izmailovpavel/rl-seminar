@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from skimage.morphology import label, convex_hull_image
 from scipy.ndimage.measurements import center_of_mass
 from scipy.ndimage.morphology import distance_transform_edt
-
+from scipy.misc import imresize
 
 
 class ObjectDetectionFeatures:
@@ -187,8 +187,8 @@ class ObjectDetectionFeatures:
         li = self.delete_small_obj(li)
         new_image = im
         new_image[li == 0] = 0
-        print(li)
-        print(np.unique(li))
+        #print(li)
+        #print(np.unique(li))
         for i in np.unique(li):
             if i == 0:
                 continue
@@ -202,7 +202,7 @@ class ObjectDetectionFeatures:
 
         
 eps = 0.03
-epsS = 15
+epsS = 7
 class ObjectDetectionFeatures2:
     def __init__(self, env):
         self.env = env
@@ -375,7 +375,7 @@ class ObjectDetectionFeatures2:
     def get_distance_features(self, image):
         cl = self.colors_classes
         cl = list(cl.values())
-        print(cl)
+        #print(cl)
         new_features = []
         for i in range(len(cl)):
             for j in range(i + 1, len(cl)):
@@ -398,9 +398,9 @@ class ObjectDetectionFeatures2:
                 continue
             c = image[w][0] 
             color, freq = self.get_nearest_color_and_freq(c, s)
-            print(c, s, freq)
-            if color == -1:
-                print('Not found class for object')
+            #print(c, s, freq)
+            #if color == -1:
+                #print('Not found class for object')
             #print(c, s)
             plt.imshow(w, cmap = 'gray')
             plt.show()
@@ -411,8 +411,8 @@ class ObjectDetectionFeatures2:
         
         
         
-thS = 45    
-epsS = 7
+thS = 20    
+epsS = 3
 class ObjectDetectionFeatures3:
     def __init__(self, env):
         self.env = env
@@ -428,30 +428,28 @@ class ObjectDetectionFeatures3:
         res = np.arange(N)
         for i in range(1, N):
             for j in range(0, i):
-                s1, s2 = classes[i][1], classes[j][1]
-                if ((s1 < thS and s2 < thS) or (s1 >= thS and s2 >= thS)) and classes[i][0] == classes[j][0]:
+                if classes[i][1] == classes[j][1] and classes[i][0] == classes[j][0]:
                     res[i] = res[j]
         
         uniq_c = np.unique(res)
         new_classes = dict()
         new_freq = dict()
         for i in range(len(uniq_c)):
-            c = uniq_c[i]
-            s = np.mean(classes[res == c][:, 1])
-            new_classes[(classes[res == c][0, 0], s)] = i
-            new_freq[(classes[res == c][0, 0], s)] = np.sum(freq[res == c])
+            cl = uniq_c[i]
+            s = classes[res == cl][0, 1]
+            c = classes[res == cl][0, 0]
+            new_classes[(c, s)] = i
+            new_freq[(c, s)] = np.sum(freq[res == cl])
         return new_classes, new_freq
     
     def get_nearest_color(self, c, s):
-        for (C, S), i in self.colors_classes.items():
-            if c == C and ((s < thS and S < thS) or (s >= thS and S >= thS)):
-                return i
+        if (c, s) in self.colors_classes:
+            return self.colors_classes[(c, s)]
         return -1
     
     def get_nearest_color_and_freq(self, c, s):
-        for (C, S), i in self.colors_classes.items():
-            if c == C and ((s < thS and S < thS) or (s >= thS and S >= thS)):
-                return i, self.colors_freq[(C, S)]
+        if (c, s) in self.colors_classes:
+            return self.colors_classes[(c, s)], self.colors_freq[(c, s)]
         return -1, -1
     
     def find_bg(self, proba=True, n_starts=20, max_samples_im_count=2000):
@@ -508,7 +506,8 @@ class ObjectDetectionFeatures3:
             while not self.env.ale.game_over():
                 n_cl = len(classes)
                 n_samples += 1
-                image = self.env.ale.getScreenGrayscale()
+                image = self.env.ale.getScreenGrayscale()[:, :, 0]
+                image = imresize(image, (168, 128), interp='nearest')
                 li = self.get_object_labels(image)
                 #plt.imshow(li)
                 #print(np.unique(li))
@@ -517,10 +516,12 @@ class ObjectDetectionFeatures3:
                     if s < epsS:
                         continue
                     #print image[ind][0]
-                    if (image[li == l][0], int(s)) not in freq:                   
-                        freq[(image[li == l][0], int(s))] = 1
-                    classes.add((image[li == l][0], int(s)))
-                    freq[(image[li == l][0], int(s))] += 1
+                    if (image[li == l][0], int(s > thS)) not in freq:                   
+                        freq[(image[li == l][0], int(s > thS))] = 1
+                    else:
+                        freq[(image[li == l][0], int(s > thS))] += 1
+                    classes.add((image[li == l][0], int(s > thS)))
+                    
                 if len(classes) != n_cl:
                     last_changes = n_samples
 
@@ -585,7 +586,7 @@ class ObjectDetectionFeatures3:
     def get_distance_features(self, image):
         cl = self.colors_classes
         cl = list(cl.values())
-        print(cl)
+        #print(cl)
         new_features = []
         for i in range(len(cl)):
             for j in range(i + 1, len(cl)):
@@ -595,22 +596,28 @@ class ObjectDetectionFeatures3:
         return np.array(new_features)
 
 
-    def get_simple_image(self, image):
+    def get_simple_image(self, image): #shape image (168, 128)!!!
         im = image.copy()
         li = self.get_object_labels(im)
         new_image = np.zeros(im.shape)
         #print(li)
         #print(np.unique(li))
+        S = np.bincount(li.ravel())
         for i in np.unique(li):
             w = li == i
-            s = np.sum(w)
+            #plt.imshow(w)
+            #plt.show()
+            #s = np.sum(w)
+            #print(s, image[w][0])
+            s = S[i]
             if s < epsS:
                 continue
+            s = s > thS
             c = image[w][0] 
             color, freq = self.get_nearest_color_and_freq(c, s)
             #print(c, s, freq)
-            if color == -1:
-                print('Not found class for object')
+            #if color == -1:
+            #    print('Not found class for object')
             #print(c, s)
             #plt.imshow(w, cmap = 'gray')
             #plt.show()
