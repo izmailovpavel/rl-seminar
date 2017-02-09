@@ -596,9 +596,8 @@ class ObjectDetectionFeatures3:
         return np.array(new_features)
 
 
-    def get_simple_image(self, image):
-        output_shape = (168, 128)
-        im = imresize(image, output_shape, interp='nearest')
+    def get_simple_image(self, image): #shape image (168, 128)!!!
+        im = image.copy()
         li = self.get_object_labels(im)
         new_image = np.zeros(im.shape)
         #print(li)
