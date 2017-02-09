@@ -507,7 +507,7 @@ class ObjectDetectionFeatures3:
                 n_cl = len(classes)
                 n_samples += 1
                 image = self.env.ale.getScreenGrayscale()[:, :, 0]
-                image = imresize(image, (168, 128), interp='nearest')
+                #image = imresize(image, (168, 128), interp='nearest')
                 li = self.get_object_labels(image)
                 #plt.imshow(li)
                 #print(np.unique(li))
